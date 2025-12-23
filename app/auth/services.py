@@ -1,0 +1,118 @@
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from passlib.context import CryptContext
+from datetime import datetime, timedelta
+from jose import jwt, JWTError
+
+from app.models.user import User
+from app.auth.schemas import UserCreate,UserOut
+from app.core.config import settings
+from uuid import UUID 
+# -------------------------
+# CONFIG
+# -------------------------
+
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# -------------------------
+# PASSWORD UTILS
+# -------------------------
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+
+# -------------------------
+# DATABASE OPERATIONS (ASYNC)
+# -------------------------
+
+async def get_user_by_id(db: AsyncSession, user_id: UUID):
+    stmt = select(User).where(User.id == user_id)
+    result = await db.execute(stmt)
+    return result.scalars().first()
+
+async def get_user_by_email(db: AsyncSession, email:str):
+    stmt = select(User).where(User.email ==email)
+    result = await db.execute(stmt)
+    return result.scalars().first()
+
+async def get_user_by_role(db: AsyncSession, role:str):
+    stmt = select(User).where(User.role ==role)
+    result = await db.execute(stmt)
+    return result.scalars().first()
+
+
+async def create_user(db: AsyncSession, user_in: UserCreate, role: str = "user") -> UserOut:
+    if user_in.password:
+        hashed_pw = hash_password(user_in.password)
+    else:
+        hashed_pw = None
+
+    new_user = User(
+        name=user_in.name,
+        email=user_in.email,
+        password=hashed_pw,
+        role=role
+    )
+
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+
+    return UserOut(
+        id=str(new_user.id),   # explicit cast
+        name=new_user.name,
+        email=new_user.email,
+        is_active=new_user.is_active,
+        role=new_user.role
+    )
+
+# -------------------------
+# JWT TOKEN
+# -------------------------
+
+def create_access_token(data: dict, expires_delta: int = ACCESS_TOKEN_EXPIRE_MINUTES):
+    payload = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=expires_delta)
+
+    payload.update({"exp": expire})
+
+    encoded_jwt = jwt.encode(
+        payload,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+
+    return encoded_jwt
+
+
+def create_refresh_token(data: dict, expires_delta: int = 60*24*7*60):  # 7 days in minutes
+    payload = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=expires_delta)
+    payload.update({"exp": expire})
+    
+    encoded_jwt = jwt.encode(
+        payload,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+    return encoded_jwt
+
+
+
+def decode_access_token(token: str) -> str | None:
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+        return payload.get("sub")
+    except JWTError:
+        return None
