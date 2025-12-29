@@ -7,10 +7,16 @@ import uuid
 
 from app.models.cart_items import CartItem
 from app.models.cart import Cart
-from app.models.order import Order 
+from app.models.payment import Payment
+from app.payments.stripe import StripeService
+from app.models.order import Order ,OrderStatus
 from app.models.order_item import OrderItem
 from app.models.product import Product
+from app.models.refund import Refund
 from app.orders.schemas import OrderOut, OrderItemOut, OrderListOut
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def place_order(
     db: AsyncSession,
@@ -138,3 +144,78 @@ async def get_order_by_id(db:AsyncSession,user_id:uuid.UUID, order_id:uuid.UUID)
                 ) for i in order.items
             ]
         )       
+
+
+async def initiate_order_cancellation(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    order_id: uuid.UUID,
+    reason:str
+) -> OrderOut:
+    result = await db.execute(
+        select(Order)
+        .where(Order.id == order_id, Order.user_id == user_id)
+        .options(selectinload(Order.items))
+    )
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.status in [OrderStatus.cancelled.value, "shipped", "delivered"]:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Order cannot be cancelled in status: {order.status}"
+        )
+
+    if order.status == OrderStatus.paid.value:
+        payment_result = await db.execute(
+            select(Payment).where(Payment.order_id == order.id)
+        )
+        payment = payment_result.scalar_one_or_none()
+
+        if payment and payment.stripe_payment_intent_id:
+            try:
+                stripe_refund = StripeService.initiate_refund(payment.stripe_payment_intent_id)
+                payment.status = "refunded"
+                new_refund = Refund(
+                    order_id=order.id,
+                    payment_id=payment.id,
+                    stripe_refund_id = stripe_refund.id,
+                    amount=order.total_amount,
+                    status="completed",
+                    cancellation_reason=reason
+                )
+                db.add(new_refund)
+            except Exception as e:
+                logger.error(f"Refund failed for order {order_id}: {str(e)}")
+                raise HTTPException(status_code=500, detail="Payment refund failed")
+
+    for item in order.items:
+        await db.execute(
+            update(Product)
+            .where(Product.id == item.product_id)
+            .values(stock=Product.stock + item.quantity)
+        )
+
+    order.status = OrderStatus.cancelled.value
+    
+    await db.commit()
+    await db.refresh(order)
+
+    return OrderOut(
+        id=order.id,
+        total_amount=order.total_amount,
+        status=order.status,
+        created_at=order.created_at,
+        items=[
+            OrderItemOut(
+                product_id=i.product_id,
+                product_name=i.product_name,
+                quantity=i.quantity,
+                price_at_purchase=i.price_at_purchase
+            ) for i in order.items
+        ]
+    )
+    

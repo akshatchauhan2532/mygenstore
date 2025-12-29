@@ -40,5 +40,15 @@ class orders:
     
 
     @router.delete("/{order_id}",response_model=None)
-    async def cancel_order(self):
-        pass
+    async def cancel_order(
+        self,
+        order_id:UUID,
+        reason: str = "User requested cancellation",
+        current_user = Depends(require_roles(["user"]))
+    ):
+        return await services.initiate_order_cancellation(
+            db=self.db,
+            order_id=order_id,
+            user_id=current_user.id,
+            reason = reason
+        )

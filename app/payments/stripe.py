@@ -36,3 +36,13 @@ class StripeService:
         except stripe.error.StripeError as e:
             logger.error(f"Stripe API Error: {str(e)}")
             raise Exception(f"Could not connect to Payment Gateway: {str(e)}")
+        
+    @staticmethod
+    def initiate_refund(payment_intent_id: str):
+        try:
+            refund = stripe.Refund.create(
+                payment_intent=payment_intent_id,
+            )
+            return refund
+        except stripe.error.StripeError as e:
+            raise Exception(f"Stripe Refund Error: {str(e)}")

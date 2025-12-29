@@ -25,6 +25,7 @@ from app.models.order_item import OrderItem
 from app.models.cart import Cart
 from app.models.payment import Payment
 from app.models.refund import Refund
+from app.models.notification import Notification,NotificationMessage
 
 # Alembic Config object
 config = context.config

@@ -48,3 +48,8 @@ class User(Base):
 
     orders = relationship("Order", back_populates="user")
     payments = relationship("Payment", back_populates="user")
+
+    notifications = relationship(
+        "Notification",
+        back_populates="user"
+    )   
