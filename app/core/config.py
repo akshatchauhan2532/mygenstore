@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     GOOGLE_USERINFO_URL: str = "https://www.googleapis.com/oauth2/v3/userinfo"
 
     STRIPE_SECRET_KEY: str
+    
+    SMTP_HOST: str
+    SMTP_PORT: int
+    SMTP_USERNAME: str
+    SMTP_PASSWORD: str
+    FROM_EMAIL: str
+
 
     class Config:
         env_file = ".env"

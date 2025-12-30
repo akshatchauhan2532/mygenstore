@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Response
 from fastapi_utils.cbv import cbv
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.session import get_db
-from app.auth.schemas import UserCreate, UserOut, Token, UserLogin
+from app.auth.schemas import UserCreate, UserOut, Token, UserLogin , UserSocialCreate
 from app.auth.services import create_user, get_user_by_id, verify_password, create_access_token, create_refresh_token,get_user_by_email
 from app.auth.dependencies import get_current_active_user
 from app.models.user import User
@@ -105,7 +105,7 @@ class UserAuthRoutes:
         user = await get_user_by_email(self.db, email)
         if not user:
             # Create new user for first-time Google login
-            user = await create_user(self.db, UserCreate(
+            user = await create_user(self.db, UserSocialCreate(
                 email=email,
                 name=name,
                 password=None,  # No password for Google users

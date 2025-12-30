@@ -62,7 +62,7 @@ class PaymentCBV:
         return payment
 
     @router.post("/webhook", include_in_schema=True)
-    async def stripe_webhook(self, payload: schemas.WebhookPayload = Body(...)):
+    async def stripe_webhook(self, payload: schemas.WebhookPayload = Body(...),current_user=Depends(require_roles(["user"]))):
         if payload.type == "checkout.session.completed":
             session_data = payload.data.get("object", {})
             order_id = session_data.get("metadata", {}).get("order_id")
@@ -72,3 +72,5 @@ class PaymentCBV:
                 return {"message": "Success"}
                 
         return {"message": "Ignored"}
+    
+    

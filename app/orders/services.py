@@ -5,6 +5,9 @@ from fastapi import HTTPException, status
 from decimal import Decimal
 import uuid
 
+from app.notifications.tasks import send_email_task
+from app.models.user import User
+
 from app.models.cart_items import CartItem
 from app.models.cart import Cart
 from app.models.payment import Payment
@@ -83,6 +86,24 @@ async def place_order(
         .options(selectinload(Order.items))
     )
     order = final_result.scalar_one()
+
+    user_result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = user_result.scalar_one()
+
+    send_email_task.delay(
+    subject="Order Placed Successfully",
+    body=f"""
+Hi {user.name},
+
+Your order has been placed successfully.
+
+Order ID: {order.id}
+Total Amount: {order.total_amount}
+""",
+    to_emails=[user.email],
+)
 
     return OrderOut(
         id=order.id,

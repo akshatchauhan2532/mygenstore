@@ -8,6 +8,8 @@ from app.cart.routes import router as cart_router
 from app.address.routes import router as address_router
 from app.orders.routes import router as order_router
 from app.payments.routes import router as payment_routes
+from app.auth.routes.refresh_routes import router as refresh_router
+
 
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,3 +44,4 @@ app.include_router(cart_router, prefix="/v1/api")
 app.include_router(address_router, prefix="/v1/api")
 app.include_router(order_router,prefix="/v1/api")
 app.include_router(payment_routes,prefix="/v1/api")
+app.include_router(refresh_router,prefix="/v1/api")

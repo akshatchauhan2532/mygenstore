@@ -4,10 +4,11 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 
-from app.models.user import User
-from app.auth.schemas import UserCreate,UserOut
+from app.models.user import User, UserRole
+from app.auth.schemas import UserCreate,UserOut,UserSocialCreate
 from app.core.config import settings
 from uuid import UUID 
+from typing import Union, Optional
 # -------------------------
 # CONFIG
 # -------------------------
@@ -48,30 +49,35 @@ async def get_user_by_role(db: AsyncSession, role:str):
     return result.scalars().first()
 
 
-async def create_user(db: AsyncSession, user_in: UserCreate, role: str = "user") -> UserOut:
-    if user_in.password:
-        hashed_pw = hash_password(user_in.password)
+async def create_user(
+    db: AsyncSession, 
+    user_in: Union[UserCreate, UserSocialCreate], 
+    role: UserRole = UserRole.user
+) -> UserOut:
+    user_data = user_in.model_dump()
+    
+    if isinstance(user_in, UserCreate):
+        user_data["password"] = hash_password(user_in.password)
+        user_data["provider"] = "local"
+        user_data["is_verified"] = False
     else:
-        hashed_pw = None
+        user_data["password"] = None
+        user_data["is_verified"] = True
 
-    new_user = User(
-        name=user_in.name,
-        email=user_in.email,
-        password=hashed_pw,
-        role=role
-    )
+    user_data["role"] = role
+    user_data["is_active"] = True
 
+    new_user = User(**user_data)
     db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
+    
+    try:
+        await db.commit()
+        await db.refresh(new_user)
+    except Exception as e:
+        await db.rollback()
+        raise e
 
-    return UserOut(
-        id=str(new_user.id),   # explicit cast
-        name=new_user.name,
-        email=new_user.email,
-        is_active=new_user.is_active,
-        role=new_user.role
-    )
+    return UserOut.model_validate(new_user)
 
 # -------------------------
 # JWT TOKEN
@@ -81,7 +87,10 @@ def create_access_token(data: dict, expires_delta: int = ACCESS_TOKEN_EXPIRE_MIN
     payload = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=expires_delta)
 
-    payload.update({"exp": expire})
+    payload.update({
+        "exp": expire,
+        "type": "access"
+    })
 
     encoded_jwt = jwt.encode(
         payload,
@@ -95,7 +104,10 @@ def create_access_token(data: dict, expires_delta: int = ACCESS_TOKEN_EXPIRE_MIN
 def create_refresh_token(data: dict, expires_delta: int = 60*24*7*60):  # 7 days in minutes
     payload = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=expires_delta)
-    payload.update({"exp": expire})
+    payload.update({
+        "exp": expire,
+        "type": "refresh"
+    })
     
     encoded_jwt = jwt.encode(
         payload,
@@ -113,6 +125,10 @@ def decode_access_token(token: str) -> str | None:
             SECRET_KEY,
             algorithms=[ALGORITHM]
         )
+
+        if payload.get("type") != "access":
+            return None
+
         return payload.get("sub")
     except JWTError:
         return None
