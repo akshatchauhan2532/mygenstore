@@ -5,10 +5,14 @@ from app.database.session import get_db
 from app.auth.schemas import UserCreate, UserOut, Token, UserLogin , UserSocialCreate
 from app.auth.services import create_user, get_user_by_id, verify_password, create_access_token, create_refresh_token,get_user_by_email
 from app.auth.dependencies import get_current_active_user
+from app.auth.password_reset_service import generate_otp,create_password_reset_otp,verify_password_reset_otp
+from app.notifications.tasks import send_email_task
+from app.auth.services import hash_password
 from app.models.user import User
 from app.core.config import settings
 import httpx
 from urllib.parse import urlencode
+
 
 
 
@@ -129,3 +133,50 @@ class UserAuthRoutes:
         )
 
         return {"access_token": access_token, "token_type": "bearer"}
+
+    @router.post("/password-reset/request")
+    async def request_password_reset(
+        self,
+        email: str,
+    ):
+        otp = await create_password_reset_otp(self.db, email)
+        send_email_task.delay(
+            subject="Reset your password",
+            body=f"Your OTP is {otp}. It expires in 5 minutes.",
+            to_emails=[email],
+        )
+        return {
+            "message": "If the email exists, an OTP has been sent"
+        }
+    
+
+    @router.post("/password-reset/confirm")
+    async def confirm_password_reset(
+        self,
+        email: str,
+        otp: str,
+        new_password: str,
+    ):
+        is_valid = await verify_password_reset_otp(
+            self.db,
+            email,
+            otp
+        )
+
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or expired OTP"
+            )
+
+        user = await get_user_by_email(self.db, email)
+        if not user:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid request"
+            )
+
+        user.password = hash_password(new_password)
+        await self.db.commit()
+
+        return {"message": "Password reset successful"}

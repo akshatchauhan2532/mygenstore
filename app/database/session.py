@@ -26,6 +26,3 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 # DEVELOPMENT ONLY: create tables (not for production)
-async def create_tables():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)

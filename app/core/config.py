@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str
     FROM_EMAIL: str
 
+    STRIPE_WEBHOOK_SECRET :str
+
 
     class Config:
         env_file = ".env"

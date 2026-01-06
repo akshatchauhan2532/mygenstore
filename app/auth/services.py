@@ -132,3 +132,17 @@ def decode_access_token(token: str) -> str | None:
         return payload.get("sub")
     except JWTError:
         return None
+
+
+async def update_user_password(
+    db: AsyncSession,
+    email: str,
+    new_password: str
+):
+    user = await get_user_by_email(db, email)
+    if not user:
+        return False
+
+    user.password = hash_password(new_password)
+    await db.commit()
+    return True

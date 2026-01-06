@@ -8,6 +8,8 @@ from app.database.session import get_db
 from app.payments.stripe import StripeService
 from app.payments import services, schemas
 from app.models.order import OrderStatus
+import stripe
+from app.core.config import settings
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -61,16 +63,39 @@ class PaymentCBV:
             raise HTTPException(status_code=404, detail="Payment record not found")
         return payment
 
-    @router.post("/webhook", include_in_schema=True)
-    async def stripe_webhook(self, payload: schemas.WebhookPayload = Body(...),current_user=Depends(require_roles(["user"]))):
-        if payload.type == "checkout.session.completed":
-            session_data = payload.data.get("object", {})
-            order_id = session_data.get("metadata", {}).get("order_id")
+    @router.post("/webhook", include_in_schema=False)
+    async def stripe_webhook(self, request: Request):
+        payload = await request.body()
+        sig_header = request.headers.get("stripe-signature")
+
+        if not sig_header:
+            raise HTTPException(status_code=400, detail="Missing Stripe signature")
+
+        try:
+            # Verifies that the event actually came from Stripe
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+            )
+        except (ValueError, stripe.error.SignatureVerificationError):
+            raise HTTPException(status_code=400, detail="Invalid signature")
+
+        if event["type"] == "checkout.session.completed":
+            session = event["data"]["object"]
             
+            # Pulling the UUID we attached in StripeService
+            order_id = session.get("metadata", {}).get("order_id")
+
             if order_id:
-                await services.mark_payment_as_success(self.db, order_id, payload.model_dump())
-                return {"message": "Success"}
-                
-        return {"message": "Ignored"}
-    
-    
+                # Check if order is already processed to prevent duplicate logic
+                order = await services.get_order_by_id(self.db, order_id)
+                if order and order.status == OrderStatus.paid.value:
+                    return {"status": "already_processed"}
+
+                # Standardizing the success update
+                await services.mark_payment_as_success(
+                    db=self.db,
+                    order_id=order_id,
+                    raw_data=event
+                )
+
+        return {"status": "ok"}

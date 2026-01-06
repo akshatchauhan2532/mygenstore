@@ -108,3 +108,9 @@ async def get_user_payment_history(db: AsyncSession, user_id: UUID) -> List[Paym
 async def get_payment_by_order(db: AsyncSession, order_id: UUID, user_id: UUID):
     result = await db.execute(select(Payment).where(and_(Payment.order_id == order_id, Payment.user_id == user_id)))
     return result.scalars().first()
+
+
+async def get_order_by_id(db: AsyncSession, order_id: str):
+    order_uuid = UUID(order_id)
+    result = await db.execute(select(Order).where(Order.id == order_uuid))
+    return result.scalars().first()

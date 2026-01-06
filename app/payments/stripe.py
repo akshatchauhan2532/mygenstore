@@ -1,12 +1,9 @@
 import stripe
-import os
-from uuid import UUID
-from dotenv import load_dotenv
 import logging
+from uuid import UUID
 from app.core.config import settings
-logger = logging.getLogger(__name__)
-load_dotenv()
 
+logger = logging.getLogger(__name__)
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class StripeService:
@@ -19,7 +16,7 @@ class StripeService:
                     'price_data': {
                         'currency': 'inr',
                         'product_data': {
-                            'name': f'Order Confirmation',
+                            'name': 'Order Confirmation',
                             'description': f'Payment for Order ID: {order_id}'
                         },
                         'unit_amount': int(amount * 100), 
@@ -28,21 +25,34 @@ class StripeService:
                 }],
                 mode='payment',
                 customer_email=user_email,
-                # In production, these would be your frontend URLs
                 success_url="http://localhost:8000/payments/success",
                 cancel_url="http://localhost:8000/payments/cancel",
-                metadata={"order_id": str(order_id)} 
+                metadata={"order_id": str(order_id)},
+                payment_intent_data={"metadata": {"order_id": str(order_id)}}
             )
+        except stripe.error.CardError as e:
+            logger.error(f"Card declined: {e.user_message}")
+            raise Exception(f"Payment failed: {e.user_message}")
+        except stripe.error.RateLimitError:
+            logger.error("Stripe API rate limit hit")
+            raise Exception("Server is busy, please try again later")
+        except stripe.error.InvalidRequestError as e:
+            logger.error(f"Invalid parameters for Stripe: {str(e)}")
+            raise Exception("Invalid payment request parameters")
         except stripe.error.StripeError as e:
-            logger.error(f"Stripe API Error: {str(e)}")
-            raise Exception(f"Could not connect to Payment Gateway: {str(e)}")
-        
+            logger.error(f"Stripe System Error: {str(e)}")
+            raise Exception("Payment gateway is currently unavailable")
+        except Exception as e:
+            logger.error(f"Unexpected error in StripeService: {str(e)}")
+            raise Exception("An internal error occurred during checkout")
+
     @staticmethod
     def initiate_refund(payment_intent_id: str):
         try:
-            refund = stripe.Refund.create(
-                payment_intent=payment_intent_id,
-            )
-            return refund
+            return stripe.Refund.create(payment_intent=payment_intent_id)
+        except stripe.error.InvalidRequestError as e:
+            logger.error(f"Refund failed (Invalid ID): {str(e)}")
+            raise Exception("Could not process refund: Invalid payment record")
         except stripe.error.StripeError as e:
-            raise Exception(f"Stripe Refund Error: {str(e)}")
+            logger.error(f"Stripe Refund Error: {str(e)}")
+            raise Exception("Refund failed due to a gateway error")
