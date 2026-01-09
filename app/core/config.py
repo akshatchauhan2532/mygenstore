@@ -1,5 +1,6 @@
 # app/core/config.py
 from pydantic_settings import BaseSettings
+from typing import Optional
 
 class Settings(BaseSettings):
     # Existing Config
@@ -8,9 +9,9 @@ class Settings(BaseSettings):
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
 
-    redis_url: str
-    celery_broker_url: str
-    celery_result_backend: str
+    REDIS_URL: str
+    CELERY_BROKER_URL: Optional[str] = None
+    CELERY_RESULT_BACKEND: Optional[str] = None
 
     # Google OAuth2 Config
     GOOGLE_CLIENT_ID: str
