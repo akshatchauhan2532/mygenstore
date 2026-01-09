@@ -1,27 +1,16 @@
 services:
-  # 1. The Database
-  db:
-    image: postgres:15
-    container_name: genstore_db
-    restart: always
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=admin
-      - POSTGRES_DB=mystore
+  redis:
+    image: redis:alpine
+    container_name: genstore_redis
     ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  # 2. RabbitMQ (Message Broker for Celery)
+      - "6379:6379"
   rabbitmq:
     image: rabbitmq:3-management
     container_name: genstore_rabbit
     ports:
-      - "5672:5672"   # RabbitMQ port
-      - "15672:15672" # Management UI (Dashboard)
+      - "5672:5672"
+      - "15672:15672"
 
-  # 3. The FastAPI Web App
   api:
     build: .
     container_name: genstore_api
@@ -30,21 +19,17 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
       - rabbitmq
+      - redis
+    # REMOVED "- db" because it's not in this file
 
-
-  # 4. The Celery Worker
   worker:
     build: .
     container_name: genstore_worker
-    # FIX 1: Point to 'app.celery_app.celery_app' (based on your screenshot)
-    # FIX 2: Use sh -c and PYTHONPATH to ensure the 'app' folder is found
     command: sh -c "PYTHONPATH=. uv run celery -A app.celery_app.celery_app worker --loglevel=info"
     env_file:
       - .env
     depends_on:
       - rabbitmq
-      - db
-volumes:
-  postgres_data:
+      - redis
+    # REMOVED "- db" here too

@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
 
+    redis_url: str
+    celery_broker_url: str
+    celery_result_backend: str
+
     # Google OAuth2 Config
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
